@@ -124,3 +124,8 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 No sockets are opened, and the real Google endpoint is never contacted by the
 test suite.
+
+## Protocol reference
+
+See [docs/protocols.md](docs/protocols.md) for the complete wire-level
+comparison of builds 20645, 29386, and the January 2008 Checkin protocol.
