@@ -5,10 +5,12 @@ from __future__ import annotations
 import http.client
 import json
 from typing import Any, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 
 CONTENT_TYPE = "org/x-json; charset=UTF-8"
+CONTENT_TYPE_29386 = "application/x-www-form-urlencoded"
+FORM_CHARSET_29386 = "iso-8859-1"
 MAX_RESPONSE_BYTES = 1024 * 1024
 
 
@@ -24,6 +26,53 @@ def post_checkin(
 ) -> tuple[dict[str, Any], bytes]:
     """POST a check-in and return its decoded JSON object and request bytes."""
 
+    body = json.dumps(request, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
+    return _post(
+        url,
+        body,
+        content_type=CONTENT_TYPE,
+        accept="org/x-json, application/json",
+        timeout=timeout,
+    )
+
+
+def post_checkin_29386(
+    url: str,
+    request: Mapping[str, Any],
+    *,
+    timeout: float = 30.0,
+) -> tuple[dict[str, Any], bytes]:
+    """POST build 29386's form-wrapped JSON payload."""
+
+    payload = json.dumps(request, separators=(",", ":"), ensure_ascii=False)
+    # Commons HttpClient 3 used ISO-8859-1 as its default form charset. Its
+    # encoder replaced characters outside that repertoire, which matters for
+    # the Chinese weekday/month characters in this build's ro.build.date.
+    body = urlencode(
+        {"payload": payload},
+        encoding=FORM_CHARSET_29386,
+        errors="replace",
+    ).encode("ascii")
+    print(body)
+    return _post(
+        url,
+        body,
+        content_type=CONTENT_TYPE_29386,
+        accept="application/json",
+        timeout=timeout,
+    )
+
+
+def _post(
+    url: str,
+    body: bytes,
+    *,
+    content_type: str,
+    accept: str,
+    timeout: float,
+) -> tuple[dict[str, Any], bytes]:
     parsed = urlsplit(url)
     if parsed.scheme not in {"http", "https"}:
         raise TransportError("check-in URL must use http or https")
@@ -36,9 +85,6 @@ def post_checkin(
     if timeout <= 0:
         raise TransportError("timeout must be greater than zero")
 
-    body = json.dumps(request, separators=(",", ":"), ensure_ascii=False).encode(
-        "utf-8"
-    )
     connection_class = (
         http.client.HTTPSConnection
         if parsed.scheme == "https"
@@ -55,8 +101,8 @@ def post_checkin(
             target,
             body=body,
             headers={
-                "Content-Type": CONTENT_TYPE,
-                "Accept": "org/x-json, application/json",
+                "Content-Type": content_type,
+                "Accept": accept,
             },
         )
         response = connection.getresponse()
@@ -67,6 +113,7 @@ def post_checkin(
             )
         if response.status != 200:
             reason = response.reason or "unknown status"
+
             raise TransportError(f"check-in rejected: HTTP {response.status} {reason}")
         try:
             decoded = json.loads(response_body.decode("utf-8"))

@@ -1,7 +1,12 @@
 # ota-prober-sooner
 
-A small, read-only prober for the JSON check-in protocol in the original
-Android framework. It defaults to:
+A small, read-only prober for two check-in protocol generations from the
+original Android framework:
+
+- The transitional protocol from build 29386 (`--protocol 29386`)
+- The later 2008 protocol (`--protocol 2008`, the default)
+
+Both modes default to:
 
 ```text
 http://android.clients.google.com/checkin
@@ -12,7 +17,8 @@ OTA, broadcast an intent, reboot a device, or install anything.
 
 ## What was reverse engineered
 
-The implementation in this source tree shows the complete old wire contract:
+The later implementation in this source tree shows the complete 2008 wire
+contract:
 
 - `CheckinService.sendCheckin()` POSTs UTF-8 JSON with media type
   `org/x-json`.
@@ -32,6 +38,22 @@ The relevant originals are:
 - `sources/android/server/checkin/CheckinProtocol.java`
 - `sources/android/server/checkin/UpdateReceiver.java`
 
+Build 29386 retains the `StatisticsService` name but introduces its own
+`android.server.checkin` package. Its differences are:
+
+- The request is an `application/x-www-form-urlencoded` form with one
+  `payload` field containing JSON.
+- Build properties use the nested `buildinfo` object and keys such as
+  `buildinfo.id`.
+- A successful reply uses `statsok`.
+- Commands are returned in an `intents` array.
+- An OTA intent carries its URL in `data`.
+
+The corresponding originals are under:
+
+- `29386-build/sources/android/server/StatisticsService.java`
+- `29386-build/sources/android/server/checkin/`
+
 ## Run
 
 No third-party dependencies are needed:
@@ -48,6 +70,24 @@ PYTHONPATH=src python3 -m ota_prober_sooner \
   --build-id TC4-RC29 \
   --carrier T-Mobile
 ```
+
+Probe as build 29386:
+
+```sh
+PYTHONPATH=src python3 -m ota_prober_sooner \
+  --protocol 29386 \
+  --product sooner \
+  --build-id htc-29386.0.9.0.0 \
+  --build-date '三  8月 29 18:03:11 CST 2007' \
+  --build-type release \
+  --build-user root \
+  --build-host sfchiou-desktop \
+  --json
+```
+
+The 29386 protocol did not transmit `ro.build.carrier`. Without `--imei`, this
+mode sends the historical fallback value `Unknown`. Its `stats` array is left
+empty so the probe does not manufacture device telemetry.
 
 Ask for a particular build, if the server still honors the old field:
 

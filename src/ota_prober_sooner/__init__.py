@@ -6,7 +6,9 @@ from .protocol import (
     CheckinReply,
     OtaOffer,
     build_request,
+    build_request_29386,
     parse_reply,
+    parse_reply_29386,
 )
 
 __all__ = [
@@ -15,8 +17,9 @@ __all__ = [
     "CheckinReply",
     "OtaOffer",
     "build_request",
+    "build_request_29386",
     "parse_reply",
+    "parse_reply_29386",
 ]
 
-__version__ = "0.1.0"
-
+__version__ = "0.2.0"

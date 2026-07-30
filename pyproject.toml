@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ota-prober-sooner"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read-only prober for the original Android JSON check-in/OTA protocol"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,4 +17,3 @@ ota-prober-sooner = "ota_prober_sooner.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-

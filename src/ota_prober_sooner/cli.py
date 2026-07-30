@@ -12,9 +12,11 @@ from .protocol import (
     DEFAULT_CHECKIN_URL,
     ProtocolError,
     build_request,
+    build_request_29386,
     parse_reply,
+    parse_reply_29386,
 )
-from .transport import TransportError, post_checkin
+from .transport import TransportError, post_checkin, post_checkin_29386
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -25,19 +27,41 @@ def make_parser() -> argparse.ArgumentParser:
             "The tool never downloads or installs an update."
         ),
     )
+    parser.add_argument(
+        "--protocol",
+        choices=("2008", "29386"),
+        default="2008",
+        help="wire protocol generation (default: 2008)",
+    )
     parser.add_argument("--url", default=DEFAULT_CHECKIN_URL)
     parser.add_argument("--product", default="sooner")
-    parser.add_argument("--carrier", default="unknown")
+    parser.add_argument("--carrier", default="unknown", help="2008 protocol only")
     parser.add_argument("--build-id", default="engineering")
-    parser.add_argument("--desired-build")
+    parser.add_argument(
+        "--build-date", default="Unknown", help="29386 protocol only"
+    )
+    parser.add_argument(
+        "--build-type", default="Unknown", help="29386 protocol only"
+    )
+    parser.add_argument(
+        "--build-user", default="Unknown", help="29386 protocol only"
+    )
+    parser.add_argument(
+        "--build-host", default="Unknown", help="29386 protocol only"
+    )
+    parser.add_argument("--desired-build", help="2008 protocol only")
     parser.add_argument(
         "--android-id",
         type=_parse_int,
         help="decimal or 0x-prefixed Android ID",
     )
-    parser.add_argument("--imei", help="optional; sent verbatim and potentially sensitive")
-    parser.add_argument("--provisioning-digest")
-    parser.add_argument("--last-checkin-msec", type=int)
+    parser.add_argument(
+        "--imei", help="optional; sent verbatim and potentially sensitive"
+    )
+    parser.add_argument("--provisioning-digest", help="2008 protocol only")
+    parser.add_argument(
+        "--last-checkin-msec", type=int, help="2008 protocol only"
+    )
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument(
         "--dry-run",
@@ -60,23 +84,56 @@ def main(
     args = make_parser().parse_args(argv)
 
     try:
-        request = build_request(
-            product=args.product,
-            carrier=args.carrier,
-            build_id=args.build_id,
-            imei=args.imei,
-            provisioning_digest=args.provisioning_digest,
-            android_id=args.android_id,
-            desired_build=args.desired_build,
-            last_checkin_msec=args.last_checkin_msec,
-        )
+        if args.protocol == "29386":
+            unsupported = {
+                "--android-id": args.android_id,
+                "--desired-build": args.desired_build,
+                "--provisioning-digest": args.provisioning_digest,
+                "--last-checkin-msec": args.last_checkin_msec,
+            }
+            used_unsupported = [
+                name for name, value in unsupported.items() if value is not None
+            ]
+            if used_unsupported:
+                raise ProtocolError(
+                    f"protocol 29386 does not support {', '.join(used_unsupported)}"
+                )
+            request = build_request_29386(
+                product=args.product,
+                build_id=args.build_id,
+                build_date=args.build_date,
+                build_type=args.build_type,
+                build_user=args.build_user,
+                build_host=args.build_host,
+                imei=args.imei,
+            )
+        else:
+            request = build_request(
+                product=args.product,
+                carrier=args.carrier,
+                build_id=args.build_id,
+                imei=args.imei,
+                provisioning_digest=args.provisioning_digest,
+                android_id=args.android_id,
+                desired_build=args.desired_build,
+                last_checkin_msec=args.last_checkin_msec,
+            )
 
         if args.dry_run:
-            print(json.dumps(request, indent=2, sort_keys=True), file=stdout)
+            print(
+                json.dumps(request, indent=2, sort_keys=True, ensure_ascii=False),
+                file=stdout,
+            )
             return 0
 
-        raw_reply, _ = post_checkin(args.url, request, timeout=args.timeout)
-        reply = parse_reply(raw_reply)
+        if args.protocol == "29386":
+            raw_reply, _ = post_checkin_29386(
+                args.url, request, timeout=args.timeout
+            )
+            reply = parse_reply_29386(raw_reply)
+        else:
+            raw_reply, _ = post_checkin(args.url, request, timeout=args.timeout)
+            reply = parse_reply(raw_reply)
 
     except (ProtocolError, TransportError) as error:
         print(f"error: {error}", file=stderr)

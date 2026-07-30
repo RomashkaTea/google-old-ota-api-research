@@ -123,6 +123,49 @@ def build_request(
     return request
 
 
+def build_request_29386(
+    *,
+    product: str,
+    build_id: str,
+    build_date: str,
+    build_type: str,
+    build_user: str,
+    build_host: str,
+    imei: str | None = None,
+) -> dict[str, Any]:
+    """Construct the payload JSON emitted by build 29386's CheckinRequest."""
+
+    fields = {
+        "product": product,
+        "build_id": build_id,
+        "build_date": build_date,
+        "build_type": build_type,
+        "build_user": build_user,
+        "build_host": build_host,
+    }
+    for name, value in fields.items():
+        if not value:
+            raise ProtocolError(f"{name} must not be empty")
+
+    # StatisticsService.getImei() used getProperty(), whose fallback was
+    # literally "Unknown". The field was always present in this protocol.
+    request_imei = imei if imei is not None else "Unknown"
+    return {
+        "imei": request_imei,
+        "buildinfo": {
+            "buildinfo.id": build_id,
+            "buildinfo.date": build_date,
+            "buildinfo.type": build_type,
+            "buildinfo.product": product,
+            "buildinfo.user": build_user,
+            "buildinfo.host": build_host,
+        },
+        # A real device appended accumulated tag/value/date statistics here.
+        # A probe sends none: OTA selection only needs the build identity.
+        "stats": [],
+    }
+
+
 def parse_reply(value: object) -> CheckinReply:
     """Parse a JSON-decoded check-in response without acting on its intents."""
 
@@ -176,10 +219,65 @@ def parse_reply(value: object) -> CheckinReply:
     return CheckinReply(stats_ok=stats_ok, intents=tuple(intents), raw=value)
 
 
+def parse_reply_29386(value: object) -> CheckinReply:
+    """Parse build 29386's transitional statsok/intents response schema."""
+
+    if not isinstance(value, Mapping):
+        raise ProtocolError("reply must be a JSON object")
+
+    stats_ok = value.get("statsok")
+    if not isinstance(stats_ok, bool):
+        raise ProtocolError("reply is missing boolean field 'statsok'")
+
+    raw_intents = value.get("intents")
+    if not isinstance(raw_intents, list):
+        raise ProtocolError("reply field 'intents' must be an array")
+
+    intents: list[Intent] = []
+    for index, item in enumerate(raw_intents):
+        if not isinstance(item, Mapping):
+            raise ProtocolError(f"intents[{index}] must be an object")
+        action = item.get("action")
+        if not isinstance(action, str) or not action:
+            raise ProtocolError(
+                f"intents[{index}].action must be a non-empty string"
+            )
+        data_uri = _optional_string(item, "data", index, collection="intents")
+
+        raw_extras = item.get("extras", {})
+        if raw_extras is None:
+            raw_extras = {}
+        if not isinstance(raw_extras, Mapping):
+            raise ProtocolError(f"intents[{index}].extras must be an object")
+        extras: list[tuple[str, str]] = []
+        for name, extra_value in raw_extras.items():
+            if not isinstance(name, str) or not isinstance(extra_value, str):
+                raise ProtocolError(
+                    f"intents[{index}].extras needs string names and values"
+                )
+            extras.append((name, extra_value))
+
+        intents.append(
+            Intent(
+                action=action,
+                data_uri=data_uri,
+                extras=tuple(extras),
+            )
+        )
+
+    return CheckinReply(stats_ok=stats_ok, intents=tuple(intents), raw=value)
+
+
 def _optional_string(
-    item: Mapping[str, object], field: str, intent_index: int
+    item: Mapping[str, object],
+    field: str,
+    intent_index: int,
+    *,
+    collection: str = "intent",
 ) -> str | None:
     result = item.get(field)
     if result is not None and not isinstance(result, str):
-        raise ProtocolError(f"intent[{intent_index}].{field} must be a string")
+        raise ProtocolError(
+            f"{collection}[{intent_index}].{field} must be a string"
+        )
     return result

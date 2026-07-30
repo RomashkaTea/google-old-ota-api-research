@@ -4,6 +4,7 @@ import io
 import json
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs
 
 from ota_prober_sooner.cli import main
 from ota_prober_sooner.protocol import (
@@ -11,9 +12,17 @@ from ota_prober_sooner.protocol import (
     FOTA_UPDATE_ACTION,
     ProtocolError,
     build_request,
+    build_request_29386,
     parse_reply,
+    parse_reply_29386,
 )
-from ota_prober_sooner.transport import CONTENT_TYPE, post_checkin
+from ota_prober_sooner.transport import (
+    CONTENT_TYPE,
+    CONTENT_TYPE_29386,
+    FORM_CHARSET_29386,
+    post_checkin,
+    post_checkin_29386,
+)
 
 
 class ProtocolTest(unittest.TestCase):
@@ -68,6 +77,52 @@ class ProtocolTest(unittest.TestCase):
     def test_reply_requires_stats_ok(self) -> None:
         with self.assertRaises(ProtocolError):
             parse_reply({"intent": []})
+
+    def test_build_29386_request_matches_transitional_field_names(self) -> None:
+        self.assertEqual(
+            build_request_29386(
+                product="sooner",
+                build_id="htc-29386.0.9.0.0",
+                build_date="三  8月 29 18:03:11 CST 2007",
+                build_type="release",
+                build_user="root",
+                build_host="sfchiou-desktop",
+            ),
+            {
+                "imei": "Unknown",
+                "buildinfo": {
+                    "buildinfo.id": "htc-29386.0.9.0.0",
+                    "buildinfo.date": "三  8月 29 18:03:11 CST 2007",
+                    "buildinfo.type": "release",
+                    "buildinfo.product": "sooner",
+                    "buildinfo.user": "root",
+                    "buildinfo.host": "sfchiou-desktop",
+                },
+                "stats": [],
+            },
+        )
+
+    def test_parse_29386_ota_and_ignore_brick_action(self) -> None:
+        reply = parse_reply_29386(
+            {
+                "statsok": True,
+                "intents": [
+                    {
+                        "action": FOTA_UPDATE_ACTION,
+                        "data": "http://example.test/29386.zip",
+                        "extras": {"sha1": "abc"},
+                    },
+                    {"action": BRICK_ACTION},
+                ],
+            }
+        )
+        self.assertTrue(reply.has_brick_action)
+        self.assertEqual(reply.ota_offers[0].url, "http://example.test/29386.zip")
+        self.assertEqual(reply.ota_offers[0].extras, (("sha1", "abc"),))
+
+    def test_29386_reply_requires_plural_intents(self) -> None:
+        with self.assertRaises(ProtocolError):
+            parse_reply_29386({"statsok": True})
 
 
 class _FakeResponse:
@@ -151,6 +206,64 @@ class TransportTest(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(
             json.loads(stdout.getvalue())["checkin"]["build"]["id"], "TC4-RC29"
+        )
+
+    def test_posts_29386_form_wrapped_payload(self) -> None:
+        with patch(
+            "ota_prober_sooner.transport.http.client.HTTPConnection",
+            _FakeConnection,
+        ):
+            request = build_request_29386(
+                product="sooner",
+                build_id="htc-29386.0.9.0.0",
+                build_date="三  8月 29 18:03:11 CST 2007",
+                build_type="release",
+                build_user="root",
+                build_host="sfchiou-desktop",
+            )
+            _, sent_body = post_checkin_29386(
+                "http://android.clients.google.com/checkin", request
+            )
+
+        connection = _FakeConnection.instance
+        self.assertEqual(connection.headers["Content-Type"], CONTENT_TYPE_29386)
+        form = parse_qs(
+            sent_body.decode("ascii"),
+            encoding=FORM_CHARSET_29386,
+            keep_blank_values=True,
+        )
+        payload = json.loads(form["payload"][0])
+        self.assertEqual(payload["buildinfo"]["buildinfo.id"], "htc-29386.0.9.0.0")
+        self.assertEqual(
+            payload["buildinfo"]["buildinfo.date"],
+            "?  8? 29 18:03:11 CST 2007",
+        )
+
+    def test_cli_29386_dry_run_uses_supplied_build(self) -> None:
+        stdout = io.StringIO()
+        result = main(
+            [
+                "--protocol",
+                "29386",
+                "--dry-run",
+                "--build-id",
+                "htc-29386.0.9.0.0",
+                "--build-date",
+                "三  8月 29 18:03:11 CST 2007",
+                "--build-type",
+                "release",
+                "--build-user",
+                "root",
+                "--build-host",
+                "sfchiou-desktop",
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        self.assertEqual(result, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(
+            payload["buildinfo"]["buildinfo.id"], "htc-29386.0.9.0.0"
         )
 
 
