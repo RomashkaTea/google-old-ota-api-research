@@ -50,6 +50,108 @@ plaintext in `system/etc/gservices-conf.xml`:
           value="http://android.clients.google.com/checkin" />
 ```
 
+## Remote brick command
+
+All three framework generations recognize the exact intent action:
+
+```text
+SHES_A_BRICK_HOUSE
+```
+
+This is not the name of an OTA package, Java service, or Binder service. It is
+a server command that causes the framework to start an Android init service
+named `brick`.
+
+### Command path
+
+The complete path is:
+
+1. The check-in or command response is parsed into an Android `Intent`.
+2. The framework compares the intent action with `SHES_A_BRICK_HOUSE`.
+3. On an exact match, it does not broadcast the intent or process it as an
+   OTA. It calls `SystemService.start("brick")` directly.
+4. Android init resolves the service name `brick` and launches its configured
+   executable.
+
+The init-control transport changed between builds:
+
+| Build | `SystemService.start("brick")` implementation |
+|---|---|
+| 20645 | Native `SystemService.sendMessage()` sends `start brick` over the local `android-init` socket |
+| 29386 | Sets the init control property `ctl.start` to `brick` |
+| January 2008 | Sets the init control property `ctl.start` to `brick` |
+
+For build 20645, the Java side is visible in
+`20645-build/sources/android/os/SystemService.java`. Its native implementation
+is in the full image's `lib/libjava_runtime.so`: the exported
+`send_init_msg(char const*)` routine connects to `android-init`, writes the
+NUL-terminated control message, and closes the socket. Builds 29386 and 2008
+use the later property-based init-control mechanism visible directly in their
+`android/os/SystemService.java`.
+
+There is no confirmation prompt or intermediate application component. The
+special action is intercepted inside `StatisticsService` or `CheckinService`
+and sent straight to init.
+
+### Init service
+
+The corresponding historical Android init definition is:
+
+```rc
+service brick /system/bin/wipe nuke
+    disabled
+```
+
+`disabled` means the service is not started automatically with its service
+class; it can still be started explicitly by name. With no `user` option, the
+service runs as root.
+
+The supplied system directories do not contain their boot ramdisk, so their
+exact device-specific `init.rc` files are unavailable. The definition above
+comes from the matching historical Android platform init configuration. The
+January 2008 image does contain the `wipe nuke` implementation inside
+`system/bin/toolbox`; the extracted directory does not preserve the
+`/system/bin/wipe` toolbox symlink. The 20645 and 29386 system dumps omit both
+the ramdisk definition and the wipe executable, so their final native hop is
+supported by the shared platform implementation but cannot be proven solely
+from those two directories.
+
+### What `wipe nuke` does
+
+The historical toolbox implementation performs these operations in order:
+
+1. Recursively removes the contents of `/system`.
+2. Recursively removes the contents of `/data`.
+3. Calls `android_reboot(ANDROID_RB_RESTART, 0, 0)`.
+
+The recursive deletion:
+
+- Skips `.`, `..`, and every `lost+found` directory.
+- Unlinks files and symlinks.
+- Removes directories after emptying them.
+- Leaves certain init-created directory nodes in place to preserve their
+  special permissions, while still deleting their contents:
+  `/system/etc/ppp`, `/data/misc`, `/data/local`, `/data/local/tmp`,
+  `/data/data`, `/data/app_private`, and `/data/app`.
+
+This is recursive file deletion, not a cryptographic or block-level secure
+erase. It does not target `/cache`, the SD card, bootloader, radio, boot, or
+recovery partitions. Individual `opendir`, `lstat`, `unlink`, and `rmdir`
+errors are printed but do not abort the overall sequence; the reboot is still
+attempted after both trees. The actual amount deleted therefore depends on
+mount state and filesystem permissions. In particular, a read-only `/system`
+mount can turn the `/system` phase into a series of failures while `/data`
+remains writable.
+
+The historical platform sources that define the final two stages are:
+
+- [Android init `brick` service](https://android.googlesource.com/platform/build/+/cf28b80398f36e5a3e67f803458e07442a2b9364/target/board/generic_x86/init.rc)
+- [Toolbox `wipe nuke` implementation](https://android.googlesource.com/platform/system/core/+/e3aeeb4de34dbb93e832e6554f494122ba633f3b/toolbox/wipe.c)
+
+The prober never follows this command path. It reports
+`dangerous_action_present: true` and ignores the action without broadcasting
+it or contacting init.
+
 ## Build 20645: Statistics protocol version 1
 
 Build 20645 predates the `android.server.checkin` package. The system service
