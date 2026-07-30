@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ota-prober-sooner"
+version = "0.1.0"
+description = "Read-only prober for the original Android JSON check-in/OTA protocol"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Framework Engineering Build contributors" }]
+dependencies = []
+
+[project.scripts]
+ota-prober-sooner = "ota_prober_sooner.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
