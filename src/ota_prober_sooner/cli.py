@@ -10,6 +10,7 @@ from typing import Sequence, TextIO
 from .protocol import (
     BRICK_ACTION,
     DEFAULT_CHECKIN_URL,
+    DEFAULT_CHECKIN_URL_29386,
     ProtocolError,
     build_request,
     build_request_29386,
@@ -33,7 +34,13 @@ def make_parser() -> argparse.ArgumentParser:
         default="2008",
         help="wire protocol generation (default: 2008)",
     )
-    parser.add_argument("--url", default=DEFAULT_CHECKIN_URL)
+    parser.add_argument(
+        "--url",
+        help=(
+            "override the check-in URL (defaults: 2008 uses "
+            f"{DEFAULT_CHECKIN_URL}; 29386 uses {DEFAULT_CHECKIN_URL_29386})"
+        ),
+    )
     parser.add_argument("--product", default="sooner")
     parser.add_argument("--carrier", default="unknown", help="2008 protocol only")
     parser.add_argument("--build-id", default="engineering")
@@ -82,6 +89,11 @@ def main(
     stderr: TextIO = sys.stderr,
 ) -> int:
     args = make_parser().parse_args(argv)
+    checkin_url = args.url or (
+        DEFAULT_CHECKIN_URL_29386
+        if args.protocol == "29386"
+        else DEFAULT_CHECKIN_URL
+    )
 
     try:
         if args.protocol == "29386":
@@ -128,11 +140,13 @@ def main(
 
         if args.protocol == "29386":
             raw_reply, _ = post_checkin_29386(
-                args.url, request, timeout=args.timeout
+                checkin_url, request, timeout=args.timeout
             )
             reply = parse_reply_29386(raw_reply)
         else:
-            raw_reply, _ = post_checkin(args.url, request, timeout=args.timeout)
+            raw_reply, _ = post_checkin(
+                checkin_url, request, timeout=args.timeout
+            )
             reply = parse_reply(raw_reply)
 
     except (ProtocolError, TransportError) as error:

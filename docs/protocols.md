@@ -18,6 +18,7 @@ encodings, JSON field names, response shapes, and OTA mechanisms.
 | Framework service | `statistics` | `statistics` | `checkin` |
 | Service class | `StatisticsService` | `StatisticsService` | `CheckinService` |
 | Endpoint source | Hard-coded host | Gservices setting | Gservices setting |
+| Check-in/statistics endpoint | `http://dm17.google.com/statistics` | `http://jmt17.google.com/checkin` | `http://android.clients.google.com/checkin` |
 | Request encoding | Form fields | Form field containing JSON | Raw JSON |
 | Success indicator | HTTP 200 | `statsok` | `stats_ok` |
 | Commands | Separate `/intent` request | `intents` array | `intent` array |
@@ -25,16 +26,29 @@ encodings, JSON field names, response shapes, and OTA mechanisms.
 | Built-in OTA support | Not found | Yes | Yes |
 | Prober mode | Not implemented | `--protocol 29386` | `--protocol 2008` |
 
-The prober defaults to the user-supplied historical URL:
+The prober uses protocol-specific historical defaults:
 
 ```text
-http://android.clients.google.com/checkin
+Build 29386:  http://jmt17.google.com/checkin
+January 2008: http://android.clients.google.com/checkin
 ```
 
-Build 29386 and the January 2008 framework obtain their real URL from the
-`checkin_service_url` Gservices setting. That setting's value is not embedded
-in the framework dumps, so the configured URL cannot be proven from those
-dumps alone.
+Both frameworks obtain their URL from the `checkin_service_url` Gservices
+setting. For build 29386, the system image preserves its configured value in
+the compiled `res/xml/gservices.xml` inside `javalib/framework-res.apk`:
+
+```xml
+<gservice name="checkin_service_url"
+          value="http://jmt17.google.com/checkin" />
+```
+
+The January 2008 system image also preserves its configured value, as
+plaintext in `system/etc/gservices-conf.xml`:
+
+```xml
+<gservice label="checkin_service_url"
+          value="http://android.clients.google.com/checkin" />
+```
 
 ## Build 20645: Statistics protocol version 1
 
@@ -45,6 +59,11 @@ hard-coded host:
 ```text
 dm17.google.com
 ```
+
+The complete image at `~/stuff/google/android-1.0/20645` contains no
+`checkin_service_url` Gservices key. Its `javalib/framework.jar` DEX contains
+the hard-coded host and the `/statistics`, `/intent`, and `/crash` paths. This
+matches `20645-build/sources/android/server/StatisticsService.java`.
 
 It uses three independent HTTP endpoints.
 
@@ -161,7 +180,18 @@ name, but introduces:
 
 ### Request transport
 
-The URL comes from the `checkin_service_url` Gservices setting.
+The URL comes from the `checkin_service_url` Gservices setting. In the full
+29386 system image at `~/stuff/google/android-1.0/29386`, resource ID
+`0x01070004` resolves to the compiled `res/xml/gservices.xml` inside
+`javalib/framework-res.apk`. Its configured value is:
+
+```text
+http://jmt17.google.com/checkin
+```
+
+The value is stored in a compressed APK entry and compiled binary XML with a
+UTF-16 string pool, which is why a plain recursive `grep` of the system image
+does not find it.
 
 The client sends a normal HTML-style form with one parameter:
 
@@ -292,10 +322,26 @@ private `stats.db` design to the Checkin content provider.
 
 ### Request transport
 
-The URL comes from the `checkin_service_url` Gservices setting.
+The URL comes from the `checkin_service_url` Gservices setting. In the
+engineering system image at `~/stuff/google/android-1.0/system`, the
+bootstrapping configuration is plaintext in
+`etc/gservices-conf.xml`:
+
+```xml
+<gservice label="provisioning_url"
+          value="http://android.clients.google.com/provisioning" />
+<gservice label="checkin_service_url"
+          value="http://android.clients.google.com/checkin" />
+<gservice label="crash_report_url"
+          value="http://android.clients.google.com/crash" />
+```
+
+The same file contains
+`gsync_sub_server=http://jmt17.google.com/gsync/sub`. That `jmt17` URL belongs
+to GSync and is not the January 2008 Checkin endpoint.
 
 ```http
-POST <checkin_service_url>
+POST http://android.clients.google.com/checkin
 Content-Type: org/x-json; charset=UTF-8
 ```
 

@@ -9,6 +9,8 @@ from urllib.parse import parse_qs
 from ota_prober_sooner.cli import main
 from ota_prober_sooner.protocol import (
     BRICK_ACTION,
+    DEFAULT_CHECKIN_URL,
+    DEFAULT_CHECKIN_URL_29386,
     FOTA_UPDATE_ACTION,
     ProtocolError,
     build_request,
@@ -264,6 +266,33 @@ class TransportTest(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(
             payload["buildinfo"]["buildinfo.id"], "htc-29386.0.9.0.0"
+        )
+
+    def test_cli_uses_protocol_specific_default_urls(self) -> None:
+        with patch(
+            "ota_prober_sooner.cli.post_checkin",
+            return_value=({"stats_ok": True, "intent": []}, b""),
+        ) as post_2008:
+            self.assertEqual(
+                main(["--json"], stdout=io.StringIO(), stderr=io.StringIO()),
+                0,
+            )
+        self.assertEqual(post_2008.call_args.args[0], DEFAULT_CHECKIN_URL)
+
+        with patch(
+            "ota_prober_sooner.cli.post_checkin_29386",
+            return_value=({"statsok": True, "intents": []}, b""),
+        ) as post_29386:
+            self.assertEqual(
+                main(
+                    ["--protocol", "29386", "--json"],
+                    stdout=io.StringIO(),
+                    stderr=io.StringIO(),
+                ),
+                0,
+            )
+        self.assertEqual(
+            post_29386.call_args.args[0], DEFAULT_CHECKIN_URL_29386
         )
 
 

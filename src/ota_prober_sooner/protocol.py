@@ -11,6 +11,7 @@ from typing import Any, Mapping
 
 
 DEFAULT_CHECKIN_URL = "http://android.clients.google.com/checkin"
+DEFAULT_CHECKIN_URL_29386 = "http://jmt17.google.com/checkin"
 FOTA_UPDATE_ACTION = "android.server.checkin.FOTA_UPDATE"
 BRICK_ACTION = "SHES_A_BRICK_HOUSE"
 

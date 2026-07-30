@@ -6,10 +6,11 @@ original Android framework:
 - The transitional protocol from build 29386 (`--protocol 29386`)
 - The later 2008 protocol (`--protocol 2008`, the default)
 
-Both modes default to:
+The modes default to their recovered historical endpoints:
 
 ```text
-http://android.clients.google.com/checkin
+29386: http://jmt17.google.com/checkin
+2008:  http://android.clients.google.com/checkin
 ```
 
 It only reports OTA URLs returned by the server. It does **not** download an
@@ -41,6 +42,8 @@ The relevant originals are:
 Build 29386 retains the `StatisticsService` name but introduces its own
 `android.server.checkin` package. Its differences are:
 
+- Its `checkin_service_url` Gservices default is
+  `http://jmt17.google.com/checkin`.
 - The request is an `application/x-www-form-urlencoded` form with one
   `payload` field containing JSON.
 - Build properties use the nested `buildinfo` object and keys such as
@@ -53,6 +56,8 @@ The corresponding originals are under:
 
 - `29386-build/sources/android/server/StatisticsService.java`
 - `29386-build/sources/android/server/checkin/`
+- `~/stuff/google/android-1.0/29386/javalib/framework-res.apk`, whose compiled
+  `res/xml/gservices.xml` supplies the endpoint
 
 ## Run
 

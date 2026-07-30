@@ -2,6 +2,7 @@
 
 from .protocol import (
     DEFAULT_CHECKIN_URL,
+    DEFAULT_CHECKIN_URL_29386,
     FOTA_UPDATE_ACTION,
     CheckinReply,
     OtaOffer,
@@ -13,6 +14,7 @@ from .protocol import (
 
 __all__ = [
     "DEFAULT_CHECKIN_URL",
+    "DEFAULT_CHECKIN_URL_29386",
     "FOTA_UPDATE_ACTION",
     "CheckinReply",
     "OtaOffer",
